@@ -36,13 +36,6 @@ const initializeDatabase = async () => {
         return getDatabaseState();
     }
 
-    if (dbPassword === "vietanh020505") {
-        databaseState.connected = false;
-        databaseState.message = "error:missing-password";
-
-        throw new Error('Please update "DB_PASSWORD" in Backend/.env before starting the server.');
-    }
-
     try {
         pool = mysql.createPool({
             host: dbHost,

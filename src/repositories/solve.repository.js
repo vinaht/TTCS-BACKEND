@@ -34,7 +34,6 @@ const createSolvesTable = async () => {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id INT NOT NULL,
             duration_ms INT UNSIGNED NOT NULL,
-            penalty VARCHAR(10) NOT NULL DEFAULT 'none',
             scramble VARCHAR(255) NULL,
             notes VARCHAR(500) NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -68,12 +67,6 @@ const syncSolvesTable = async () => {
         );
         await pool.query(
             `ALTER TABLE ${SOLVE_TABLE} MODIFY COLUMN duration_ms INT UNSIGNED NOT NULL`
-        );
-    }
-
-    if (!availableColumns.has("penalty")) {
-        await pool.query(
-            `ALTER TABLE ${SOLVE_TABLE} ADD COLUMN penalty VARCHAR(10) NOT NULL DEFAULT 'none' AFTER duration_ms`
         );
     }
 
@@ -161,7 +154,7 @@ const listSolvesByUserId = async (userId, limit = 50) => {
     return rows.map(mapSolveRow);
 };
 
-const createSolveForUser = async ({ userId, durationMs, penalty, scramble, notes }) => {
+const createSolveForUser = async ({ userId, durationMs, scramble, notes }) => {
     await ensureSchema();
 
     const pool = getPool();
@@ -170,15 +163,15 @@ const createSolveForUser = async ({ userId, durationMs, penalty, scramble, notes
 
     if (hasLegacyTimeColumn) {
         [result] = await pool.execute(
-            `INSERT INTO ${SOLVE_TABLE} (user_id, time, duration_ms, penalty, scramble, notes)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [userId, durationMs / 1000, durationMs, penalty, scrambleValue, notes]
+            `INSERT INTO ${SOLVE_TABLE} (user_id, time, duration_ms, scramble, notes)
+             VALUES (?, ?, ?, ?, ?)`,
+            [userId, durationMs / 1000, durationMs, scrambleValue, notes]
         );
     } else {
         [result] = await pool.execute(
-            `INSERT INTO ${SOLVE_TABLE} (user_id, duration_ms, penalty, scramble, notes)
-             VALUES (?, ?, ?, ?, ?)`,
-            [userId, durationMs, penalty, scrambleValue, notes]
+            `INSERT INTO ${SOLVE_TABLE} (user_id, duration_ms, scramble, notes)
+             VALUES (?, ?, ?, ?)`,
+            [userId, durationMs, scrambleValue, notes]
         );
     }
 

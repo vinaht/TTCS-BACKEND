@@ -1,17 +1,171 @@
 const adminRepository = require("../repositories/admin.repository");
-const createPendingAction = require("../utils/createPendingAction");
+const algorithmRepository = require("../repositories/algorithm.repository");
+const reminderService = require("./reminder.service");
+const { toPublicUser } = require("../models/user.model");
+const ApiError = require("../utils/ApiError");
+const { createListResponse } = require("../utils/listResponse");
+const { reminderInactiveDays } = require("../config/env");
+const {
+    normalizeBoolean,
+    normalizeLimit,
+    normalizeOptionalText,
+    normalizePage,
+    normalizeRequiredText,
+    requirePositiveInteger
+} = require("../utils/validators");
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
+const ALLOWED_ROLES = new Set(["user", "admin"]);
+
+const normalizeId = (value, fieldName = "User id") => requirePositiveInteger(value, fieldName);
+
+const normalizeEmail = (value) => {
+    const normalizedValue = normalizeRequiredText(value, "Email", 191).toLowerCase();
+
+    if (!EMAIL_REGEX.test(normalizedValue)) {
+        throw new ApiError(400, "Email format is invalid.");
+    }
+
+    return normalizedValue;
+};
+
+const normalizeRole = (value) => {
+    const normalizedValue = normalizeRequiredText(value, "Role", 20).toLowerCase();
+
+    if (!ALLOWED_ROLES.has(normalizedValue)) {
+        throw new ApiError(400, "Role must be either user or admin.");
+    }
+
+    return normalizedValue;
+};
 
 class AdminService {
-    getStatus() {
+    constructor({
+        repository = adminRepository,
+        algorithmRepo = algorithmRepository,
+        reminders = reminderService
+    } = {}) {
+        this.repository = repository;
+        this.algorithmRepository = algorithmRepo;
+        this.reminderService = reminders;
+    }
+
+    async initialize() {
+        await this.repository.ensureSchema();
+    }
+
+    async getStatus() {
+        const initialMeta = this.repository.getMeta();
+        const plannedEndpoints = [
+            "GET /",
+            "GET /algorithms",
+            "GET /users"
+        ];
+
+        if (!initialMeta.storage || initialMeta.storage === "database-pending") {
+            return {
+                ...initialMeta,
+                plannedEndpoints,
+                mailConfigured: this.reminderService.isMailConfigured(),
+                schedulerRunning: this.reminderService.isSchedulerRunning()
+            };
+        }
+
+        await this.repository.ensureSchema();
+
         return {
-            ...adminRepository.getMeta(),
-            plannedEndpoints: ["GET /status"]
+            ...this.repository.getMeta(),
+            plannedEndpoints,
+            mailConfigured: this.reminderService.isMailConfigured(),
+            schedulerRunning: this.reminderService.isSchedulerRunning()
         };
     }
 
-    getOverview() {
-        return createPendingAction("Admin overview");
+    async getOverview() {
+        await Promise.all([this.repository.ensureSchema(), this.algorithmRepository.ensureSchema()]);
+
+        const [counts, totalAlgorithms, lastAutoReminderRun] = await Promise.all([
+            this.repository.getUserOverviewCounts(reminderInactiveDays),
+            this.algorithmRepository.countAlgorithms(),
+            this.repository.getLastAutoReminderRun()
+        ]);
+
+        return {
+            totalUsers: Number(counts?.total_users || 0),
+            totalAlgorithms: Number(totalAlgorithms || 0),
+            activeUsers60d: Number(counts?.active_users || 0),
+            inactiveUsers60d: Number(counts?.inactive_users || 0),
+            lastAutoReminderRun
+        };
     }
+
+    async listUsers(query = {}) {
+        const page = normalizePage(query.page);
+        const limit = normalizeLimit(query.limit, {
+            defaultValue: DEFAULT_LIMIT,
+            maxValue: MAX_LIMIT
+        });
+        const result = await this.repository.listUsers({
+            page,
+            limit,
+            search: normalizeOptionalText(query.search, "Search", 100),
+            role: query.role ? normalizeRole(query.role) : undefined,
+            inactive: normalizeBoolean(query.inactive, "inactive"),
+            inactiveThresholdDays: reminderInactiveDays
+        });
+
+        return createListResponse({
+            items: result.items.map(toPublicUser),
+            page,
+            limit,
+            total: result.total
+        });
+    }
+
+    async getUserById(userId) {
+        const user = await this.repository.findUserById(normalizeId(userId));
+
+        if (!user) {
+            throw new ApiError(404, "User not found.");
+        }
+
+        return toPublicUser(user);
+    }
+
+    async updateUser(userId, payload = {}) {
+        const normalizedUserId = normalizeId(userId);
+        const updates = {};
+
+        if (payload.username !== undefined) {
+            updates.username = normalizeRequiredText(payload.username, "Username", 50);
+        }
+
+        if (payload.email !== undefined) {
+            updates.email = normalizeEmail(payload.email);
+        }
+
+        if (payload.role !== undefined) {
+            updates.role = normalizeRole(payload.role);
+        }
+
+        if (Object.keys(updates).length === 0) {
+            throw new ApiError(400, "At least one user field must be provided.");
+        }
+
+        const user = await this.repository.updateUser(normalizedUserId, updates);
+
+        if (!user) {
+            throw new ApiError(404, "User not found.");
+        }
+
+        return toPublicUser(user);
+    }
+
 }
 
-module.exports = new AdminService();
+const adminService = new AdminService();
+
+module.exports = adminService;
+module.exports.AdminService = AdminService;

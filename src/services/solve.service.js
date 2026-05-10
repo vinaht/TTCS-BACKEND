@@ -1,26 +1,13 @@
 const ApiError = require("../utils/ApiError");
 const solveRepository = require("../repositories/solve.repository");
+const { toPublicSolve } = require("../models/solve.model");
 const {
-    SOLVE_PENALTIES,
-    toPublicSolve
-} = require("../models/solve.model");
+    normalizeLimit,
+    normalizeOptionalText
+} = require("../utils/validators");
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-
-const normalizeListLimit = (input) => {
-    if (input === undefined) {
-        return DEFAULT_LIMIT;
-    }
-
-    const limit = Number.parseInt(input, 10);
-
-    if (!Number.isInteger(limit) || limit <= 0) {
-        throw new ApiError(400, "Query parameter limit must be a positive integer.");
-    }
-
-    return Math.min(limit, MAX_LIMIT);
-};
 
 const normalizeDurationMs = (payload = {}) => {
     const candidates = [
@@ -39,39 +26,6 @@ const normalizeDurationMs = (payload = {}) => {
     }
 
     return Math.round(durationMs);
-};
-
-const normalizePenalty = (input) => {
-    if (input === undefined || input === null || input === "") {
-        return SOLVE_PENALTIES.NONE;
-    }
-
-    const penalty = String(input).trim().toLowerCase();
-    const allowedPenalties = new Set(Object.values(SOLVE_PENALTIES));
-
-    if (!allowedPenalties.has(penalty)) {
-        throw new ApiError(400, "Penalty must be one of: none, plus2, dnf.");
-    }
-
-    return penalty;
-};
-
-const normalizeOptionalText = (value, fieldName, maxLength) => {
-    if (value === undefined || value === null || value === "") {
-        return null;
-    }
-
-    if (typeof value !== "string") {
-        throw new ApiError(400, `${fieldName} must be a string.`);
-    }
-
-    const normalizedValue = value.trim();
-
-    if (normalizedValue.length > maxLength) {
-        throw new ApiError(400, `${fieldName} must not exceed ${maxLength} characters.`);
-    }
-
-    return normalizedValue || null;
 };
 
 class SolveService {
@@ -98,7 +52,10 @@ class SolveService {
     }
 
     async getAll(userId, query = {}) {
-        const limit = normalizeListLimit(query.limit);
+        const limit = normalizeLimit(query.limit, {
+            defaultValue: DEFAULT_LIMIT,
+            maxValue: MAX_LIMIT
+        });
         const solves = await solveRepository.listSolvesByUserId(userId, limit);
 
         return {
@@ -110,14 +67,16 @@ class SolveService {
 
     async create(userId, payload = {}) {
         const durationMs = normalizeDurationMs(payload);
-        const penalty = normalizePenalty(payload.penalty);
-        const scramble = normalizeOptionalText(payload.scramble, "Scramble", 255);
-        const notes = normalizeOptionalText(payload.notes, "Notes", 500);
+        const scramble = normalizeOptionalText(payload.scramble, "Scramble", 255, {
+            undefinedAs: null
+        });
+        const notes = normalizeOptionalText(payload.notes, "Notes", 500, {
+            undefinedAs: null
+        });
 
         const solve = await solveRepository.createSolveForUser({
             userId,
             durationMs,
-            penalty,
             scramble,
             notes
         });

@@ -5,6 +5,11 @@ const { jwtSecret } = require("../config/env");
 const { toPublicUser } = require("../models/user.model");
 const authRepository = require("../repositories/auth.repository");
 const ApiError = require("../utils/ApiError");
+const {
+    normalizeBoolean,
+    normalizeRequiredText,
+    requirePositiveInteger
+} = require("../utils/validators");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
@@ -12,11 +17,7 @@ const MIN_USERNAME_LENGTH = 3;
 const MAX_USERNAME_LENGTH = 50;
 
 const normalizeEmail = (email) => {
-    if (typeof email !== "string" || !email.trim()) {
-        throw new ApiError(400, "Email is required.");
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeRequiredText(email, "Email", 191).toLowerCase();
 
     if (!EMAIL_REGEX.test(normalizedEmail)) {
         throw new ApiError(400, "Email format is invalid.");
@@ -26,11 +27,7 @@ const normalizeEmail = (email) => {
 };
 
 const normalizeUsername = (input) => {
-    if (typeof input !== "string" || !input.trim()) {
-        throw new ApiError(400, "Username is required.");
-    }
-
-    const username = input.trim();
+    const username = normalizeRequiredText(input, "Username", MAX_USERNAME_LENGTH);
 
     if (username.length < MIN_USERNAME_LENGTH) {
         throw new ApiError(400, `Username must be at least ${MIN_USERNAME_LENGTH} characters long.`);
@@ -43,26 +40,41 @@ const normalizeUsername = (input) => {
     return username;
 };
 
-const normalizePassword = (password) => {
+const normalizePassword = (password, fieldName = "Password") => {
     if (typeof password !== "string" || !password) {
-        throw new ApiError(400, "Password is required.");
+        throw new ApiError(400, `${fieldName} is required.`);
     }
 
     if (password.length < MIN_PASSWORD_LENGTH) {
-        throw new ApiError(400, `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
+        throw new ApiError(400, `${fieldName} must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
+    }
+
+    return password;
+};
+
+const normalizeConfirmPassword = (password) => {
+    if (typeof password !== "string" || !password) {
+        throw new ApiError(400, "Password confirmation is required.");
     }
 
     return password;
 };
 
 const normalizeRemember = (remember) => {
-    return remember === true || remember === "true" || remember === "1" || remember === "on";
+    if (remember === undefined || remember === null || remember === "") {
+        return false;
+    }
+
+    return normalizeBoolean(remember, "remember", {
+        undefinedAs: false
+    });
 };
 
 const createToken = (user, remember = false) => {
     const expiresIn = remember ? "30d" : "7d";
 
     return {
+        // JWT keeps the login state on the client; protected routes verify it on each request.
         token: jwt.sign(
             {
                 sub: String(user.id),
@@ -88,12 +100,16 @@ const buildAuthResponse = (user, remember = false) => {
 };
 
 class AuthService {
+    constructor({ repository = authRepository } = {}) {
+        this.repository = repository;
+    }
+
     async initialize() {
-        await authRepository.ensureSchema();
+        await this.repository.ensureSchema();
     }
 
     async getCurrentUser(userId) {
-        const user = await authRepository.findUserById(userId);
+        const user = await this.repository.findUserById(userId);
 
         if (!user) {
             throw new ApiError(404, "User not found.");
@@ -103,23 +119,23 @@ class AuthService {
     }
 
     async getStatus() {
-        const initialMeta = authRepository.getMeta();
+        const initialMeta = this.repository.getMeta();
 
         if (!initialMeta.storage || initialMeta.storage === "database-pending") {
             return {
                 ...initialMeta,
                 totalUsers: 0,
-                plannedEndpoints: ["GET /me", "POST /register", "POST /login"]
+                plannedEndpoints: ["GET /me", "POST /register", "POST /login", "PATCH /password"]
             };
         }
 
-        await authRepository.ensureSchema();
-        const totalUsers = await authRepository.countUsers();
+        await this.repository.ensureSchema();
+        const totalUsers = await this.repository.countUsers();
 
         return {
-            ...authRepository.getMeta(),
+            ...this.repository.getMeta(),
             totalUsers,
-            plannedEndpoints: ["GET /me", "POST /register", "POST /login"]
+            plannedEndpoints: ["GET /me", "POST /register", "POST /login", "PATCH /password"]
         };
     }
 
@@ -128,20 +144,20 @@ class AuthService {
         const email = normalizeEmail(payload.email);
         const password = normalizePassword(payload.password);
 
-        const existingUsername = await authRepository.findUserByUsername(username);
+        const existingUsername = await this.repository.findUserByUsername(username);
 
         if (existingUsername) {
             throw new ApiError(409, "Username is already taken.");
         }
 
-        const existingUser = await authRepository.findUserByEmail(email);
+        const existingUser = await this.repository.findUserByEmail(email);
 
         if (existingUser) {
             throw new ApiError(409, "Email is already registered.");
         }
 
         const passwordHash = await bcrypt.hash(password, 12);
-        const user = await authRepository.createUser({
+        const user = await this.repository.createUser({
             username,
             email,
             passwordHash
@@ -155,7 +171,7 @@ class AuthService {
         const password = normalizePassword(payload.password);
         const remember = normalizeRemember(payload.remember);
 
-        const user = await authRepository.findUserByEmail(email);
+        const user = await this.repository.findUserByEmail(email);
 
         if (!user) {
             throw new ApiError(401, "Email or password is incorrect.");
@@ -167,10 +183,49 @@ class AuthService {
             throw new ApiError(401, "Email or password is incorrect.");
         }
 
-        const updatedUser = await authRepository.touchLastLogin(user.id);
+        const updatedUser = await this.repository.touchLastLogin(user.id);
 
         return buildAuthResponse(updatedUser, remember);
     }
+
+    async changePassword(userId, payload = {}) {
+        const normalizedUserId = requirePositiveInteger(userId, "User id");
+        const currentPassword = normalizePassword(payload.currentPassword, "Current password");
+        const newPassword = normalizePassword(payload.newPassword, "New password");
+        const confirmPassword = normalizeConfirmPassword(payload.confirmPassword);
+
+        if (newPassword !== confirmPassword) {
+            throw new ApiError(400, "Password confirmation does not match.");
+        }
+
+        const user = await this.repository.findUserById(normalizedUserId);
+
+        if (!user) {
+            throw new ApiError(404, "User not found.");
+        }
+
+        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+
+        if (!isCurrentPasswordValid) {
+            throw new ApiError(400, "Current password is incorrect.");
+        }
+
+        const isSamePassword = await bcrypt.compare(newPassword, user.passwordHash);
+
+        if (isSamePassword) {
+            throw new ApiError(400, "New password must be different from current password.");
+        }
+
+        const passwordHash = await bcrypt.hash(newPassword, 12);
+        await this.repository.updatePasswordHash(normalizedUserId, passwordHash);
+
+        return {
+            changed: true
+        };
+    }
 }
 
-module.exports = new AuthService();
+const authService = new AuthService();
+
+module.exports = authService;
+module.exports.AuthService = AuthService;

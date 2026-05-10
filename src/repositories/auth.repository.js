@@ -208,6 +208,24 @@ const touchLastLogin = async (userId) => {
     return findUserById(userId);
 };
 
+const updatePasswordHash = async (userId, passwordHash) => {
+    await ensureSchema();
+
+    const pool = getPool();
+    const [result] = await pool.execute(
+        `UPDATE ${USER_TABLE}
+         SET password = ?
+         WHERE id = ?`,
+        [passwordHash, userId]
+    );
+
+    if (result.affectedRows === 0) {
+        return null;
+    }
+
+    return findUserById(userId);
+};
+
 const countUsers = async () => {
     await ensureSchema();
 
@@ -225,5 +243,6 @@ module.exports = {
     findUserById,
     findUserByUsername,
     getMeta,
-    touchLastLogin
+    touchLastLogin,
+    updatePasswordHash
 };

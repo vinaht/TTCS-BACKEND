@@ -55,7 +55,6 @@ class StatService {
         return {
             totalSolves: Number(summary?.total_solves || 0),
             completedSolves: Number(summary?.completed_solves || 0),
-            dnfSolves: Number(summary?.dnf_solves || 0),
             bestTimeMs,
             bestTimeSeconds: toSeconds(bestTimeMs),
             averageTimeMs,

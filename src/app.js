@@ -5,19 +5,29 @@ const morgan = require("morgan");
 const routes = require("./routes");
 const notFoundMiddleware = require("./middlewares/notFound.middleware");
 const errorMiddleware = require("./middlewares/error.middleware");
-const { clientUrl, env } = require("./config/env");
+const { uploadRoot, uploadPublicPath } = require("./config/uploads");
+const { clientUrls, env } = require("./config/env");
 
 const app = express();
+const allowedOrigins = new Set(clientUrls);
 
 app.use(
     cors({
-        origin: clientUrl,
+        origin(origin, callback) {
+            if (!origin || allowedOrigins.has(origin)) {
+                callback(null, true);
+                return;
+            }
+
+            callback(new Error("Not allowed by CORS"));
+        },
         credentials: true
     })
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan(env === "development" ? "dev" : "combined"));
+app.use(uploadPublicPath, express.static(uploadRoot));
 
 app.get("/", (req, res) => {
     res.status(200).json({

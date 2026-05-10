@@ -41,22 +41,9 @@ const getSolveSummaryByUserId = async (userId) => {
     const [rows] = await pool.execute(
         `SELECT
             COUNT(*) AS total_solves,
-            SUM(CASE WHEN penalty = 'dnf' THEN 0 ELSE 1 END) AS completed_solves,
-            SUM(CASE WHEN penalty = 'dnf' THEN 1 ELSE 0 END) AS dnf_solves,
-            MIN(
-                CASE
-                    WHEN penalty = 'dnf' THEN NULL
-                    WHEN penalty = 'plus2' THEN duration_ms + 2000
-                    ELSE duration_ms
-                END
-            ) AS best_time_ms,
-            AVG(
-                CASE
-                    WHEN penalty = 'dnf' THEN NULL
-                    WHEN penalty = 'plus2' THEN duration_ms + 2000
-                    ELSE duration_ms
-                END
-            ) AS average_time_ms
+            COUNT(*) AS completed_solves,
+            MIN(duration_ms) AS best_time_ms,
+            AVG(duration_ms) AS average_time_ms
          FROM ${SOLVE_TABLE}
          WHERE user_id = ?`,
         [userId]

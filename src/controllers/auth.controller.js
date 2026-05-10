@@ -22,7 +22,13 @@ const login = asyncHandler(async (req, res) => {
     return sendSuccess(res, data, "Login successful");
 });
 
+const changePassword = asyncHandler(async (req, res) => {
+    const data = await authService.changePassword(req.auth.userId, req.body);
+    return sendSuccess(res, data, "Password changed successfully");
+});
+
 module.exports = {
+    changePassword,
     me,
     status,
     register,
