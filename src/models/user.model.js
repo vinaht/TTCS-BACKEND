@@ -86,6 +86,10 @@ const toPublicUser = (user) => {
         result.canReceiveReminder = Boolean(user.canReceiveReminder);
     }
 
+    if (user.reminderBlockedReason !== undefined) {
+        result.reminderBlockedReason = user.reminderBlockedReason || null;
+    }
+
     return result;
 };
 

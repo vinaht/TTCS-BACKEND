@@ -57,6 +57,11 @@ const updateUser = asyncHandler(async (req, res) => {
     return sendSuccess(res, data, "User updated");
 });
 
+const sendUserReminder = asyncHandler(async (req, res) => {
+    const data = await adminService.sendManualReminder(req.params.id, req.auth.userId);
+    return sendSuccess(res, data, "Reminder sent");
+});
+
 module.exports = {
     status,
     getOverview,
@@ -68,5 +73,6 @@ module.exports = {
     uploadImage,
     listUsers,
     getUser,
-    updateUser
+    updateUser,
+    sendUserReminder
 };

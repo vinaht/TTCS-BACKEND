@@ -22,5 +22,6 @@ router.delete("/algorithms/:id", authenticate, requireAdmin, adminController.del
 router.get("/users", authenticate, requireAdmin, adminController.listUsers);
 router.get("/users/:id", authenticate, requireAdmin, adminController.getUser);
 router.patch("/users/:id", authenticate, requireAdmin, adminController.updateUser);
+router.post("/users/:id/reminder", authenticate, requireAdmin, adminController.sendUserReminder);
 
 module.exports = router;

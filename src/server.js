@@ -27,10 +27,6 @@ const startServer = async () => {
             console.log(
                 `[CubeAL API] running on port ${port} in ${env} mode | database: ${databaseState.message}`
             );
-
-            if (databaseState.connected) {
-                reminderService.startScheduler();
-            }
         });
     } catch (error) {
         console.error(`[CubeAL API] startup failed: ${error.message}`);

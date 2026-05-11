@@ -1,18 +1,18 @@
 # CubeAL Backend
 
-Backend cho hệ thống CubeAL, được xây dựng bằng Express.js theo mô hình MVC và sử dụng MySQL để lưu trữ dữ liệu.
+Backend cho he thong CubeAL, duoc xay dung bang Express.js theo mo hinh MVC va su dung MySQL de luu tru du lieu.
 
-## Tính năng chính
+## Tinh nang chinh
 
-- Xác thực người dùng bằng JWT
-- Đăng ký, đăng nhập và đổi mật khẩu
-- Quản lý thời gian solve Rubik theo từng người dùng
-- Thống kê kết quả luyện tập cá nhân
-- Quản lý công thức Rubik cá nhân
-- Quản trị viên có thể quản lý thuật toán và người dùng
-- Gửi email nhắc nhở người dùng không hoạt động
+- Xac thuc nguoi dung bang JWT
+- Dang ky, dang nhap va doi mat khau
+- Quan ly thoi gian solve Rubik theo tung nguoi dung
+- Thong ke ket qua luyen tap ca nhan
+- Quan ly cong thuc Rubik ca nhan
+- Quan tri vien co the quan ly thuat toan va nguoi dung
+- Admin gui email nhac nho thu cong cho nguoi dung khong hoat dong
 
-## Công nghệ sử dụng
+## Cong nghe su dung
 
 - Node.js
 - Express.js
@@ -21,15 +21,15 @@ Backend cho hệ thống CubeAL, được xây dựng bằng Express.js theo mô
 - Bcrypt
 - SMTP
 
-## Cấu trúc chính
+## Cau truc chinh
 
-- `routes`: khai báo API
-- `controllers`: xử lý request và response
-- `services`: xử lý nghiệp vụ
-- `repositories`: truy cập dữ liệu
-- `middlewares`: xử lý xác thực, phân quyền và lỗi
-- `config`: cấu hình môi trường và database
+- `routes`: khai bao API
+- `controllers`: xu ly request va response
+- `services`: xu ly nghiep vu
+- `repositories`: truy cap du lieu
+- `middlewares`: xu ly xac thuc, phan quyen va loi
+- `config`: cau hinh moi truong va database
 
-## Trạng thái
+## Trang thai
 
-Project đã có các chức năng chính cho authentication, quản lý solve, thống kê, công thức cá nhân, quản trị thuật toán, quản lý người dùng và gửi email nhắc nhở.
+Project da co cac chuc nang chinh cho authentication, quan ly solve, thong ke, cong thuc ca nhan, quan tri thuat toan, quan ly nguoi dung va gui email nhac nho thu cong.

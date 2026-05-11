@@ -1,30 +1,24 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const {
-    ReminderService,
-    parseReminderCron,
-    getNextRunAt
-} = require("../src/services/reminder.service");
+const { ReminderService } = require("../src/services/reminder.service");
 
-test("ReminderService automatic run sends eligible inactive users", async () => {
+test("ReminderService manual send delivers to an eligible inactive user", async () => {
     const sentMessages = [];
     const logs = [];
-    let query;
     const service = new ReminderService({
         repository: {
-            listEligibleAutoReminderTargets: async (filters) => {
-                query = filters;
-                return [
-                    {
-                        id: 1,
-                        username: "eligible",
-                        email: "eligible@example.com",
-                        inactiveDays: 90,
-                        lastReminderAt: null,
-                        canReceiveReminder: true
-                    }
-                ];
+            findReminderTargetByUserId: async (filters) => {
+                assert.equal(filters.userId, 1);
+
+                return {
+                    id: 1,
+                    username: "eligible",
+                    email: "eligible@example.com",
+                    inactiveDays: 90,
+                    lastReminderAt: null,
+                    canReceiveReminder: true
+                };
             },
             createReminderLog: async (entry) => {
                 logs.push(entry);
@@ -39,25 +33,24 @@ test("ReminderService automatic run sends eligible inactive users", async () => 
 
     service.isMailConfigured = () => true;
 
-    const result = await service.runAutomaticReminders();
+    const result = await service.sendManualReminder({
+        userId: 1,
+        actorUserId: 99
+    });
 
-    assert.equal(result.requested, 1);
-    assert.equal(result.sent, 1);
-    assert.equal(result.skipped, 0);
-    assert.equal(result.failed, 0);
+    assert.equal(result.status, "sent");
+    assert.equal(result.userId, 1);
     assert.equal(sentMessages.length, 1);
     assert.equal(logs.length, 1);
-    assert.equal(logs[0].triggerType, "auto");
-    assert.equal(logs[0].sentBy, null);
-    assert.equal(Number.isInteger(query.thresholdDays), true);
-    assert.equal(Number.isInteger(query.cooldownDays), true);
+    assert.equal(logs[0].triggerType, "manual");
+    assert.equal(logs[0].sentBy, 99);
 });
 
-test("ReminderService automatic run noops when there are no eligible users", async () => {
+test("ReminderService manual send rejects unknown users defensively", async () => {
     const logs = [];
     const service = new ReminderService({
         repository: {
-            listEligibleAutoReminderTargets: async () => [],
+            findReminderTargetByUserId: async () => null,
             createReminderLog: async (entry) => {
                 logs.push(entry);
             }
@@ -71,78 +64,116 @@ test("ReminderService automatic run noops when there are no eligible users", asy
 
     service.isMailConfigured = () => true;
 
-    const result = await service.runAutomaticReminders();
+    const result = await service.sendManualReminder({
+        userId: 404,
+        actorUserId: 15
+    });
 
-    assert.equal(result.requested, 0);
-    assert.equal(result.sent, 0);
-    assert.equal(result.skipped, 0);
-    assert.equal(result.failed, 0);
-    assert.deepEqual(result.results, []);
+    assert.equal(result.status, "failed");
+    assert.equal(result.message, "User not found.");
     assert.equal(logs.length, 1);
-    assert.equal(logs[0].triggerType, "auto");
-    assert.equal(logs[0].status, "noop");
+    assert.equal(logs[0].triggerType, "manual");
+    assert.equal(logs[0].status, "failed");
 });
 
-test("ReminderService direct auto processing still rejects ineligible targets defensively", async () => {
-    const sentMessages = [];
+test("ReminderService manual send skips users in cooldown", async () => {
     const logs = [];
     const service = new ReminderService({
         repository: {
-            listEligibleAutoReminderTargets: async () => [
-                {
-                    id: 2,
-                    username: "cooldown",
-                    email: "cooldown@example.com",
-                    inactiveDays: 88,
-                    lastReminderAt: "2026-04-20T00:00:00.000Z",
-                    canReceiveReminder: false
-                },
-                {
-                    id: 3,
-                    username: "fresh",
-                    email: "fresh@example.com",
-                    inactiveDays: 20,
-                    lastReminderAt: null,
-                    canReceiveReminder: false
-                }
-            ],
+            findReminderTargetByUserId: async () => ({
+                id: 2,
+                username: "cooldown",
+                email: "cooldown@example.com",
+                inactiveDays: 88,
+                lastReminderAt: "2026-04-20T00:00:00.000Z",
+                canReceiveReminder: false
+            }),
             createReminderLog: async (entry) => {
                 logs.push(entry);
             }
         },
         transporterFactory: () => ({
             sendMail: async (message) => {
-                sentMessages.push(message);
+                throw new Error(`sendMail should not be called for ${message.to}`);
             }
         })
     });
 
     service.isMailConfigured = () => true;
 
-    const result = await service.sendReminders({
-        triggerType: "auto",
-        actorUserId: null,
-        thresholdDays: 60,
-        cooldownDays: 7
+    const result = await service.sendManualReminder({
+        userId: 2,
+        actorUserId: 11
     });
 
-    assert.equal(result.requested, 2);
-    assert.equal(result.sent, 0);
-    assert.equal(result.skipped, 2);
-    assert.equal(result.failed, 0);
-    assert.equal(sentMessages.length, 0);
-    assert.equal(logs.length, 2);
-    assert.equal(result.results[0].status, "skipped");
-    assert.match(result.results[0].message, /last 7 days/i);
-    assert.equal(result.results[1].status, "skipped");
-    assert.match(result.results[1].message, /less than 60 days/i);
+    assert.equal(result.status, "skipped");
+    assert.match(result.message, /last 7 days/i);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0].status, "skipped");
 });
 
-test("parseReminderCron supports daily schedules and next run stays in the future", () => {
-    const config = parseReminderCron("0 8 * * *");
-    const now = new Date("2026-04-24T00:30:00.000Z");
-    const nextRunAt = getNextRunAt(config, now);
+test("ReminderService manual send skips users below the inactivity threshold", async () => {
+    const logs = [];
+    const service = new ReminderService({
+        repository: {
+            findReminderTargetByUserId: async () => ({
+                id: 3,
+                username: "fresh",
+                email: "fresh@example.com",
+                inactiveDays: 20,
+                lastReminderAt: null,
+                canReceiveReminder: false
+            }),
+            createReminderLog: async (entry) => {
+                logs.push(entry);
+            }
+        },
+        transporterFactory: () => ({
+            sendMail: async (message) => {
+                throw new Error(`sendMail should not be called for ${message.to}`);
+            }
+        })
+    });
 
-    assert.deepEqual(config, { minute: 0, hour: 8 });
-    assert.ok(nextRunAt.getTime() > now.getTime());
+    service.isMailConfigured = () => true;
+
+    const result = await service.sendManualReminder({
+        userId: 3,
+        actorUserId: 11
+    });
+
+    assert.equal(result.status, "skipped");
+    assert.match(result.message, /less than 60 days/i);
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0].status, "skipped");
+});
+
+test("ReminderService manual send fails fast when SMTP is not configured", async () => {
+    const service = new ReminderService({
+        repository: {
+            findReminderTargetByUserId: async () => {
+                throw new Error("findReminderTargetByUserId should not be called");
+            }
+        },
+        transporterFactory: () => ({
+            sendMail: async () => {
+                throw new Error("sendMail should not be called");
+            }
+        })
+    });
+
+    service.isMailConfigured = () => false;
+
+    await assert.rejects(
+        () =>
+            service.sendManualReminder({
+                userId: 1,
+                actorUserId: 2
+            }),
+        (error) => {
+            assert.equal(error.statusCode, 503);
+            assert.match(error.message, /SMTP is not configured/i);
+            return true;
+        }
+    );
 });

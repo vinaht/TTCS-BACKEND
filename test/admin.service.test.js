@@ -11,16 +11,14 @@ test("AdminService overview aggregates user and algorithm totals", async () => {
                 total_users: 12,
                 active_users: 7,
                 inactive_users: 5
-            }),
-            getLastAutoReminderRun: async () => "2026-04-24T01:00:00.000Z"
+            })
         },
         algorithmRepo: {
             ensureSchema: async () => true,
             countAlgorithms: async () => 42
         },
         reminders: {
-            isMailConfigured: () => true,
-            isSchedulerRunning: () => false
+            isMailConfigured: () => true
         }
     });
 
@@ -30,8 +28,7 @@ test("AdminService overview aggregates user and algorithm totals", async () => {
         totalUsers: 12,
         totalAlgorithms: 42,
         activeUsers60d: 7,
-        inactiveUsers60d: 5,
-        lastAutoReminderRun: "2026-04-24T01:00:00.000Z"
+        inactiveUsers60d: 5
     });
 });
 
@@ -44,8 +41,7 @@ test("AdminService validates allowed roles when updating user", async () => {
         },
         algorithmRepo: {},
         reminders: {
-            isMailConfigured: () => true,
-            isSchedulerRunning: () => false
+            isMailConfigured: () => true
         }
     });
 
@@ -57,4 +53,35 @@ test("AdminService validates allowed roles when updating user", async () => {
             return true;
         }
     );
+});
+
+test("AdminService delegates manual reminders to reminder service", async () => {
+    const reminderCalls = [];
+    const service = new AdminService({
+        repository: {},
+        algorithmRepo: {},
+        reminders: {
+            isMailConfigured: () => true,
+            sendManualReminder: async (payload) => {
+                reminderCalls.push(payload);
+                return {
+                    userId: payload.userId,
+                    status: "sent"
+                };
+            }
+        }
+    });
+
+    const result = await service.sendManualReminder(7, 3);
+
+    assert.deepEqual(reminderCalls, [
+        {
+            userId: 7,
+            actorUserId: 3
+        }
+    ]);
+    assert.deepEqual(result, {
+        userId: 7,
+        status: "sent"
+    });
 });

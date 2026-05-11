@@ -308,7 +308,7 @@ const getUserOverviewCounts = async (inactiveThresholdDays) => {
     return rows[0] || {};
 };
 
-const listEligibleAutoReminderTargets = async ({ thresholdDays, cooldownDays }) => {
+const findReminderTargetByUserId = async ({ userId, thresholdDays, cooldownDays }) => {
     await ensureSchema();
 
     const pool = getPool();
@@ -318,16 +318,23 @@ const listEligibleAutoReminderTargets = async ({ thresholdDays, cooldownDays }) 
             COALESCE(u.last_login_at, u.created_at) AS last_activity_at,
             ${inactivityExpression} AS inactive_days,
             rl.last_reminder_at,
-            1 AS can_receive_reminder
+            CASE
+                WHEN ${inactivityExpression} >= ?
+                 AND (
+                    rl.last_reminder_at IS NULL
+                    OR rl.last_reminder_at < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? DAY)
+                 )
+                THEN 1
+                ELSE 0
+            END AS can_receive_reminder
          FROM ${USER_TABLE} u
          ${lastReminderJoin}
-         WHERE ${inactivityExpression} >= ?
-           AND (rl.last_reminder_at IS NULL OR rl.last_reminder_at < DATE_SUB(CURRENT_TIMESTAMP, INTERVAL ? DAY))
-         ORDER BY inactive_days DESC, u.id DESC`,
-        [thresholdDays, cooldownDays]
+         WHERE u.id = ?
+         LIMIT 1`,
+        [thresholdDays, cooldownDays, userId]
     );
 
-    return rows.map(mapUserRow);
+    return mapUserRow(rows[0]);
 };
 
 const createReminderLog = async ({
@@ -354,27 +361,13 @@ const createReminderLog = async ({
     );
 };
 
-const getLastAutoReminderRun = async () => {
-    await ensureSchema();
-
-    const pool = getPool();
-    const [rows] = await pool.query(
-        `SELECT MAX(sent_at) AS last_run
-         FROM ${REMINDER_LOG_TABLE}
-         WHERE trigger_type = 'auto'`
-    );
-
-    return rows[0]?.last_run || null;
-};
-
 module.exports = {
     createReminderLog,
     ensureSchema,
     findUserById,
-    getLastAutoReminderRun,
+    findReminderTargetByUserId,
     getMeta,
     getUserOverviewCounts,
-    listEligibleAutoReminderTargets,
     listUsers,
     updateUser
 };

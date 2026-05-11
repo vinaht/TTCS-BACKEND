@@ -4,7 +4,7 @@ const reminderService = require("./reminder.service");
 const { toPublicUser } = require("../models/user.model");
 const ApiError = require("../utils/ApiError");
 const { createListResponse } = require("../utils/listResponse");
-const { reminderInactiveDays } = require("../config/env");
+const { reminderInactiveDays, reminderCooldownDays } = require("../config/env");
 const {
     normalizeBoolean,
     normalizeLimit,
@@ -41,6 +41,60 @@ const normalizeRole = (value) => {
     return normalizedValue;
 };
 
+const isValidDate = (value) => {
+    if (!value) {
+        return false;
+    }
+
+    const parsedValue = new Date(value);
+    return !Number.isNaN(parsedValue.getTime());
+};
+
+const buildReminderState = (user) => {
+    const inactiveDays = Number(user?.inactiveDays);
+
+    if (!Number.isFinite(inactiveDays) || inactiveDays < reminderInactiveDays) {
+        return {
+            canReceiveReminder: false,
+            reminderBlockedReason: `User has been inactive for less than ${reminderInactiveDays} days.`
+        };
+    }
+
+    if (!isValidDate(user?.lastReminderAt)) {
+        return {
+            canReceiveReminder: true,
+            reminderBlockedReason: null
+        };
+    }
+
+    const lastReminderAt = new Date(user.lastReminderAt);
+    const cooldownDeadline = new Date(lastReminderAt.getTime());
+    cooldownDeadline.setDate(cooldownDeadline.getDate() + reminderCooldownDays);
+
+    if (cooldownDeadline.getTime() > Date.now()) {
+        return {
+            canReceiveReminder: false,
+            reminderBlockedReason: `Reminder was already sent within the last ${reminderCooldownDays} days.`
+        };
+    }
+
+    return {
+        canReceiveReminder: true,
+        reminderBlockedReason: null
+    };
+};
+
+const toReminderAwarePublicUser = (user) => {
+    if (!user) {
+        return null;
+    }
+
+    return toPublicUser({
+        ...user,
+        ...buildReminderState(user)
+    });
+};
+
 class AdminService {
     constructor({
         repository = adminRepository,
@@ -68,8 +122,7 @@ class AdminService {
             return {
                 ...initialMeta,
                 plannedEndpoints,
-                mailConfigured: this.reminderService.isMailConfigured(),
-                schedulerRunning: this.reminderService.isSchedulerRunning()
+                mailConfigured: this.reminderService.isMailConfigured()
             };
         }
 
@@ -78,26 +131,23 @@ class AdminService {
         return {
             ...this.repository.getMeta(),
             plannedEndpoints,
-            mailConfigured: this.reminderService.isMailConfigured(),
-            schedulerRunning: this.reminderService.isSchedulerRunning()
+            mailConfigured: this.reminderService.isMailConfigured()
         };
     }
 
     async getOverview() {
         await Promise.all([this.repository.ensureSchema(), this.algorithmRepository.ensureSchema()]);
 
-        const [counts, totalAlgorithms, lastAutoReminderRun] = await Promise.all([
+        const [counts, totalAlgorithms] = await Promise.all([
             this.repository.getUserOverviewCounts(reminderInactiveDays),
-            this.algorithmRepository.countAlgorithms(),
-            this.repository.getLastAutoReminderRun()
+            this.algorithmRepository.countAlgorithms()
         ]);
 
         return {
             totalUsers: Number(counts?.total_users || 0),
             totalAlgorithms: Number(totalAlgorithms || 0),
             activeUsers60d: Number(counts?.active_users || 0),
-            inactiveUsers60d: Number(counts?.inactive_users || 0),
-            lastAutoReminderRun
+            inactiveUsers60d: Number(counts?.inactive_users || 0)
         };
     }
 
@@ -117,7 +167,7 @@ class AdminService {
         });
 
         return createListResponse({
-            items: result.items.map(toPublicUser),
+            items: result.items.map(toReminderAwarePublicUser),
             page,
             limit,
             total: result.total
@@ -131,7 +181,7 @@ class AdminService {
             throw new ApiError(404, "User not found.");
         }
 
-        return toPublicUser(user);
+        return toReminderAwarePublicUser(user);
     }
 
     async updateUser(userId, payload = {}) {
@@ -160,7 +210,17 @@ class AdminService {
             throw new ApiError(404, "User not found.");
         }
 
-        return toPublicUser(user);
+        return toReminderAwarePublicUser(user);
+    }
+
+    async sendManualReminder(userId, actorUserId) {
+        const normalizedUserId = normalizeId(userId);
+        const normalizedActorUserId = normalizeId(actorUserId, "Admin user id");
+
+        return this.reminderService.sendManualReminder({
+            userId: normalizedUserId,
+            actorUserId: normalizedActorUserId
+        });
     }
 
 }

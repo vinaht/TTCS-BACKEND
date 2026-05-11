@@ -48,6 +48,5 @@ module.exports = {
     smtpPassword: process.env.SMTP_PASSWORD || "",
     smtpFrom: process.env.SMTP_FROM || "",
     reminderInactiveDays: Number(process.env.REMINDER_INACTIVE_DAYS) || 60,
-    reminderCooldownDays: Number(process.env.REMINDER_COOLDOWN_DAYS) || 7,
-    reminderCron: process.env.REMINDER_CRON || "0 8 * * *"
+    reminderCooldownDays: Number(process.env.REMINDER_COOLDOWN_DAYS) || 7
 };

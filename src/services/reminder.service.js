@@ -6,17 +6,11 @@ const {
     smtpPassword,
     smtpFrom,
     reminderInactiveDays,
-    reminderCooldownDays,
-    reminderCron
+    reminderCooldownDays
 } = require("../config/env");
 const adminRepository = require("../repositories/admin.repository");
 const ApiError = require("../utils/ApiError");
 const { buildReminderMessage } = require("../utils/reminderMessage");
-const {
-    DEFAULT_REMINDER_CRON,
-    getNextRunAt,
-    parseReminderCron
-} = require("../utils/reminderSchedule");
 
 const defaultTransporterFactory = (transportOptions) => {
     // Lazy-load nodemailer so unit tests can run without touching the package.
@@ -28,19 +22,11 @@ const defaultTransporterFactory = (transportOptions) => {
 class ReminderService {
     constructor({
         repository = adminRepository,
-        transporterFactory = defaultTransporterFactory,
-        logger = console,
-        timeoutFactory = setTimeout,
-        clearScheduledTimeout = clearTimeout
+        transporterFactory = defaultTransporterFactory
     } = {}) {
         this.repository = repository;
         this.transporterFactory = transporterFactory;
-        this.logger = logger;
-        this.timeoutFactory = timeoutFactory;
-        this.clearScheduledTimeout = clearScheduledTimeout;
         this.transporter = null;
-        this.schedulerHandle = null;
-        this.schedulerEnabled = false;
     }
 
     async initialize() {
@@ -49,10 +35,6 @@ class ReminderService {
 
     isMailConfigured() {
         return Boolean(smtpHost && smtpPort && smtpFrom);
-    }
-
-    isSchedulerRunning() {
-        return this.schedulerEnabled;
     }
 
     getTransporter() {
@@ -80,78 +62,22 @@ class ReminderService {
         return this.transporter;
     }
 
-    async runAutomaticReminders() {
-        if (!this.isMailConfigured()) {
-            return {
-                requested: 0,
-                sent: 0,
-                skipped: 0,
-                failed: 0,
-                results: []
-            };
-        }
-
-        return this.sendReminders({
-            triggerType: "auto",
-            actorUserId: null,
+    async sendManualReminder({ userId, actorUserId }) {
+        const transporter = this.getTransporter();
+        const target = await this.repository.findReminderTargetByUserId({
+            userId,
             thresholdDays: reminderInactiveDays,
             cooldownDays: reminderCooldownDays
         });
-    }
 
-    async sendReminders({
-        triggerType,
-        actorUserId = null,
-        thresholdDays,
-        cooldownDays
-    }) {
-        const transporter = this.getTransporter();
-        const targets = await this.repository.listEligibleAutoReminderTargets({
-            thresholdDays,
-            cooldownDays
+        return this.processSingleReminder({
+            target,
+            transporter,
+            triggerType: "manual",
+            actorUserId,
+            thresholdDays: reminderInactiveDays,
+            cooldownDays: reminderCooldownDays
         });
-        const results = [];
-        let sent = 0;
-        let skipped = 0;
-        let failed = 0;
-
-        if (targets.length === 0) {
-            await this.repository.createReminderLog({
-                triggerType,
-                sentBy: actorUserId,
-                status: "noop",
-                errorMessage: "No eligible inactive users."
-            });
-        }
-
-        for (const target of targets) {
-            const result = await this.processSingleReminder({
-                target,
-                transporter,
-                triggerType,
-                actorUserId,
-                thresholdDays,
-                cooldownDays
-            });
-
-            results.push(result);
-
-            if (result.status === "sent") {
-                sent += 1;
-            } else if (result.status === "skipped") {
-                skipped += 1;
-            } else {
-                failed += 1;
-            }
-        }
-
-        return {
-            requested: targets.length,
-            sent,
-            skipped,
-            failed,
-            results
-        };
     }
 
     async processSingleReminder({
@@ -239,13 +165,15 @@ class ReminderService {
                 status: "sent"
             });
 
+            const sentAt = new Date().toISOString();
+
             return {
                 userId: target.id,
                 status: "sent",
                 message: "Reminder sent successfully.",
                 email: target.email,
                 inactiveDays: target.inactiveDays,
-                lastReminderAt: target.lastReminderAt
+                lastReminderAt: sentAt
             };
         } catch (error) {
             await this.repository.createReminderLog({
@@ -267,60 +195,9 @@ class ReminderService {
             };
         }
     }
-
-    startScheduler() {
-        if (this.schedulerEnabled || !this.isMailConfigured()) {
-            return;
-        }
-
-        this.schedulerEnabled = true;
-        this.scheduleNextRun();
-    }
-
-    stopScheduler() {
-        if (this.schedulerHandle) {
-            this.clearScheduledTimeout(this.schedulerHandle);
-            this.schedulerHandle = null;
-        }
-
-        this.schedulerEnabled = false;
-    }
-
-    scheduleNextRun() {
-        if (!this.schedulerEnabled) {
-            return;
-        }
-
-        let scheduleConfig;
-
-        try {
-            scheduleConfig = parseReminderCron(reminderCron);
-        } catch (error) {
-            this.logger.warn?.(
-                `[CubeAL reminders] ${error.message}. Falling back to ${DEFAULT_REMINDER_CRON}.`
-            );
-            scheduleConfig = parseReminderCron(DEFAULT_REMINDER_CRON);
-        }
-
-        const nextRunAt = getNextRunAt(scheduleConfig);
-        const delay = Math.max(1000, nextRunAt.getTime() - Date.now());
-
-        // Keep only one scheduled job alive, then schedule the next one after it finishes.
-        this.schedulerHandle = this.timeoutFactory(async () => {
-            try {
-                await this.runAutomaticReminders();
-            } catch (error) {
-                this.logger.error?.(`[CubeAL reminders] auto reminder failed: ${error.message}`);
-            } finally {
-                this.scheduleNextRun();
-            }
-        }, delay);
-    }
 }
 
 const reminderService = new ReminderService();
 
 module.exports = reminderService;
 module.exports.ReminderService = ReminderService;
-module.exports.parseReminderCron = parseReminderCron;
-module.exports.getNextRunAt = getNextRunAt;
