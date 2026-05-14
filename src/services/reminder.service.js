@@ -39,7 +39,7 @@ class ReminderService {
 
     getTransporter() {
         if (!this.isMailConfigured()) {
-            throw new ApiError(503, "SMTP is not configured for reminder emails.");
+            throw new ApiError(503, "SMTP chưa được cấu hình cho email nhắc nhở.");
         }
 
         if (!this.transporter) {
@@ -99,7 +99,7 @@ class ReminderService {
             return {
                 userId: target?.id || null,
                 status: "failed",
-                message: "User not found.",
+                message: "Không tìm thấy người dùng.",
                 email: target?.email || null,
                 inactiveDays: target?.inactiveDays || null,
                 lastReminderAt: target?.lastReminderAt || null
@@ -119,7 +119,7 @@ class ReminderService {
             return {
                 userId: target.id,
                 status: "skipped",
-                message: `User has been inactive for less than ${thresholdDays} days.`,
+                message: `Người dùng đã không hoạt động dưới ${thresholdDays} ngày.`,
                 email: target.email,
                 inactiveDays: target.inactiveDays,
                 lastReminderAt: target.lastReminderAt
@@ -133,13 +133,13 @@ class ReminderService {
                 sentBy: actorUserId,
                 inactiveDays: target.inactiveDays,
                 status: "skipped",
-                errorMessage: `Reminder was already sent within the last ${cooldownDays} days.`
+                errorMessage: `Đã gửi nhắc nhở trong vòng ${cooldownDays} ngày gần đây.`
             });
 
             return {
                 userId: target.id,
                 status: "skipped",
-                message: `Reminder was already sent within the last ${cooldownDays} days.`,
+                message: `Đã gửi nhắc nhở trong vòng ${cooldownDays} ngày gần đây.`,
                 email: target.email,
                 inactiveDays: target.inactiveDays,
                 lastReminderAt: target.lastReminderAt
@@ -170,7 +170,7 @@ class ReminderService {
             return {
                 userId: target.id,
                 status: "sent",
-                message: "Reminder sent successfully.",
+                message: "Đã gửi nhắc nhở thành công.",
                 email: target.email,
                 inactiveDays: target.inactiveDays,
                 lastReminderAt: sentAt

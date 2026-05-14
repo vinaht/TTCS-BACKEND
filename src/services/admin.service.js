@@ -56,7 +56,7 @@ const buildReminderState = (user) => {
     if (!Number.isFinite(inactiveDays) || inactiveDays < reminderInactiveDays) {
         return {
             canReceiveReminder: false,
-            reminderBlockedReason: `User has been inactive for less than ${reminderInactiveDays} days.`
+            reminderBlockedReason: `Người dùng đã không hoạt động dưới ${reminderInactiveDays} ngày.`
         };
     }
 
@@ -74,7 +74,7 @@ const buildReminderState = (user) => {
     if (cooldownDeadline.getTime() > Date.now()) {
         return {
             canReceiveReminder: false,
-            reminderBlockedReason: `Reminder was already sent within the last ${reminderCooldownDays} days.`
+            reminderBlockedReason: `Đã gửi nhắc nhở trong vòng ${reminderCooldownDays} ngày gần đây.`
         };
     }
 
@@ -222,7 +222,6 @@ class AdminService {
             actorUserId: normalizedActorUserId
         });
     }
-
 }
 
 const adminService = new AdminService();
