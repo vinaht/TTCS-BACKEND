@@ -13,8 +13,6 @@ const ApiError = require("../utils/ApiError");
 const { buildReminderMessage } = require("../utils/reminderMessage");
 
 const defaultTransporterFactory = (transportOptions) => {
-    // Lazy-load nodemailer so unit tests can run without touching the package.
-    // eslint-disable-next-line global-require
     const nodemailer = require("nodemailer");
     return nodemailer.createTransport(transportOptions);
 };
