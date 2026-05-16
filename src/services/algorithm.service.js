@@ -223,6 +223,12 @@ const normalizeAlgorithmPayload = (payload = {}, { partial = false } = {}) => {
             : normalizeRequiredText(payload.formula, "Algorithm", 500);
     }
 
+    if (payload.note !== undefined) {
+        normalizedPayload.note = normalizeOptionalText(payload.note, "Note", 500);
+    } else if (!partial) {
+        normalizedPayload.note = null;
+    }
+
     if (!partial || payload.course !== undefined) {
         normalizedPayload.course = normalizeCourse(payload.course, { required: !partial });
     }

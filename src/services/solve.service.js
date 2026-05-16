@@ -9,13 +9,28 @@ const {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
+const toMilliseconds = (value, multiplier = 1) => {
+    if (value === undefined || value === null || value === "") {
+        return undefined;
+    }
+
+    const normalizedValue = Number(value);
+
+    if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+        return Number.NaN;
+    }
+
+    return normalizedValue * multiplier;
+};
+
 const normalizeDurationMs = (payload = {}) => {
     const candidates = [
         payload.durationMs,
         payload.timeMs,
         payload.duration_ms,
-        typeof payload.timeSeconds === "number" ? payload.timeSeconds * 1000 : undefined,
-        typeof payload.durationSeconds === "number" ? payload.durationSeconds * 1000 : undefined
+        toMilliseconds(payload.timeSeconds, 1000),
+        toMilliseconds(payload.durationSeconds, 1000),
+        toMilliseconds(payload.time, 1000)
     ];
 
     const rawDurationMs = candidates.find((value) => value !== undefined && value !== null);

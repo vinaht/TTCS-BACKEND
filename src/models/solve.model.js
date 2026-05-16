@@ -4,6 +4,7 @@ const REQUIRED_SOLVE_COLUMNS = [
     "id",
     "user_id",
     "duration_ms",
+    "time",
     "scramble",
     "notes",
     "created_at",
@@ -14,6 +15,7 @@ const SOLVE_SELECT_COLUMNS = `
     id,
     user_id,
     duration_ms,
+    time,
     scramble,
     notes,
     created_at,
@@ -29,6 +31,10 @@ const mapSolveRow = (row) => {
         id: row.id,
         userId: row.user_id,
         durationMs: row.duration_ms,
+        time:
+            row.time === undefined || row.time === null
+                ? Number((row.duration_ms / 1000).toFixed(3))
+                : Number(row.time),
         scramble: row.scramble,
         notes: row.notes,
         createdAt: row.created_at,
@@ -46,6 +52,10 @@ const toPublicSolve = (solve) => {
         userId: solve.userId,
         durationMs: solve.durationMs,
         durationSeconds: Number((solve.durationMs / 1000).toFixed(2)),
+        time:
+            solve.time === undefined || solve.time === null
+                ? Number((solve.durationMs / 1000).toFixed(3))
+                : Number(solve.time),
         scramble: solve.scramble,
         notes: solve.notes,
         createdAt: solve.createdAt,

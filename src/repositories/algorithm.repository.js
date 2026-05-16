@@ -43,6 +43,7 @@ const createAlgorithmsTable = async () => {
             case_code VARCHAR(50) NOT NULL,
             name VARCHAR(120) NOT NULL,
             formula VARCHAR(500) NOT NULL,
+            note VARCHAR(500) NULL,
             description TEXT NULL,
             image_url VARCHAR(500) NULL,
             video_url VARCHAR(500) NULL,
@@ -84,6 +85,10 @@ const syncAlgorithmsTable = async () => {
 
     if (!availableColumns.has("description")) {
         await pool.query(`ALTER TABLE ${ALGORITHM_TABLE} ADD COLUMN description TEXT NULL AFTER formula`);
+    }
+
+    if (!availableColumns.has("note")) {
+        await pool.query(`ALTER TABLE ${ALGORITHM_TABLE} ADD COLUMN note VARCHAR(500) NULL AFTER formula`);
     }
 
     if (!availableColumns.has("image_url")) {
@@ -255,9 +260,16 @@ const buildFilters = (filters = {}, options = {}) => {
     if (filters.search) {
         const searchValue = `%${filters.search}%`;
         whereClauses.push(
-            "(name LIKE ? OR formula LIKE ? OR case_code LIKE ? OR description LIKE ? OR stage LIKE ?)"
+            "(name LIKE ? OR formula LIKE ? OR note LIKE ? OR case_code LIKE ? OR description LIKE ? OR stage LIKE ?)"
         );
-        params.push(searchValue, searchValue, searchValue, searchValue, searchValue);
+        params.push(
+            searchValue,
+            searchValue,
+            searchValue,
+            searchValue,
+            searchValue,
+            searchValue
+        );
     }
 
     return {
@@ -325,6 +337,7 @@ const createAlgorithm = async ({
     caseCode,
     name,
     formula,
+    note,
     description,
     imageUrl,
     videoUrl,
@@ -348,6 +361,7 @@ const createAlgorithm = async ({
                 case_code,
                 name,
                 formula,
+                note,
                 description,
                 image_url,
                 video_url,
@@ -366,6 +380,7 @@ const createAlgorithm = async ({
                 caseCode,
                 name,
                 formula,
+                note,
                 description,
                 imageUrl,
                 videoUrl,
@@ -402,6 +417,7 @@ const updateAlgorithm = async (algorithmId, updates = {}) => {
     addAssignment(assignments, params, "case_code", updates.caseCode);
     addAssignment(assignments, params, "name", updates.name);
     addAssignment(assignments, params, "formula", updates.formula);
+    addAssignment(assignments, params, "note", updates.note);
     addAssignment(assignments, params, "description", updates.description);
     addAssignment(assignments, params, "image_url", updates.imageUrl);
     addAssignment(assignments, params, "video_url", updates.videoUrl);

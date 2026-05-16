@@ -14,7 +14,7 @@ const baseRepository = createPendingRepository("solves");
 
 let schemaReady = false;
 let schemaPromise;
-let hasLegacyTimeColumn = false;
+let hasTimeColumn = false;
 
 const getPool = () => {
     const pool = getDatabasePool();
@@ -34,6 +34,7 @@ const createSolvesTable = async () => {
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             user_id INT NOT NULL,
             duration_ms INT UNSIGNED NOT NULL,
+            time DECIMAL(10,3) NOT NULL,
             scramble VARCHAR(255) NULL,
             notes VARCHAR(500) NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -49,7 +50,7 @@ const syncSolvesTable = async () => {
     const pool = getPool();
     const [rows] = await pool.query(`SHOW COLUMNS FROM ${SOLVE_TABLE}`);
     const availableColumns = new Set(rows.map((row) => row.Field));
-    hasLegacyTimeColumn = availableColumns.has("time");
+    hasTimeColumn = availableColumns.has("time");
 
     if (!availableColumns.has("duration_ms")) {
         if (!availableColumns.has("time")) {
@@ -70,6 +71,27 @@ const syncSolvesTable = async () => {
         );
     }
 
+    if (!availableColumns.has("time")) {
+        await pool.query(
+            `ALTER TABLE ${SOLVE_TABLE} ADD COLUMN time DECIMAL(10,3) NULL AFTER duration_ms`
+        );
+        await pool.query(
+            `UPDATE ${SOLVE_TABLE}
+             SET time = ROUND(duration_ms / 1000, 3)
+             WHERE time IS NULL`
+        );
+        await pool.query(
+            `ALTER TABLE ${SOLVE_TABLE} MODIFY COLUMN time DECIMAL(10,3) NOT NULL`
+        );
+        hasTimeColumn = true;
+    } else {
+        await pool.query(
+            `UPDATE ${SOLVE_TABLE}
+             SET time = ROUND(duration_ms / 1000, 3)
+             WHERE time IS NULL`
+        );
+    }
+
     if (!availableColumns.has("notes")) {
         await pool.query(
             `ALTER TABLE ${SOLVE_TABLE} ADD COLUMN notes VARCHAR(500) NULL AFTER scramble`
@@ -87,7 +109,7 @@ const validateSolvesTable = async () => {
     const pool = getPool();
     const [rows] = await pool.query(`SHOW COLUMNS FROM ${SOLVE_TABLE}`);
     const availableColumns = new Set(rows.map((row) => row.Field));
-    hasLegacyTimeColumn = availableColumns.has("time");
+    hasTimeColumn = availableColumns.has("time");
     const missingColumns = REQUIRED_SOLVE_COLUMNS.filter((column) => !availableColumns.has(column));
 
     if (missingColumns.length > 0) {
@@ -159,21 +181,17 @@ const createSolveForUser = async ({ userId, durationMs, scramble, notes }) => {
 
     const pool = getPool();
     const scrambleValue = scramble || "";
-    let result;
-
-    if (hasLegacyTimeColumn) {
-        [result] = await pool.execute(
-            `INSERT INTO ${SOLVE_TABLE} (user_id, time, duration_ms, scramble, notes)
-             VALUES (?, ?, ?, ?, ?)`,
-            [userId, durationMs / 1000, durationMs, scrambleValue, notes]
-        );
-    } else {
-        [result] = await pool.execute(
-            `INSERT INTO ${SOLVE_TABLE} (user_id, duration_ms, scramble, notes)
-             VALUES (?, ?, ?, ?)`,
-            [userId, durationMs, scrambleValue, notes]
-        );
-    }
+    const timeSeconds = Number((durationMs / 1000).toFixed(3));
+    const [result] = await pool.execute(
+        hasTimeColumn
+            ? `INSERT INTO ${SOLVE_TABLE} (user_id, duration_ms, time, scramble, notes)
+               VALUES (?, ?, ?, ?, ?)`
+            : `INSERT INTO ${SOLVE_TABLE} (user_id, duration_ms, scramble, notes)
+               VALUES (?, ?, ?, ?)`,
+        hasTimeColumn
+            ? [userId, durationMs, timeSeconds, scrambleValue, notes]
+            : [userId, durationMs, scrambleValue, notes]
+    );
 
     const [rows] = await pool.execute(
         `SELECT ${SOLVE_SELECT_COLUMNS}

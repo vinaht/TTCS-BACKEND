@@ -57,12 +57,16 @@ class StatService {
             completedSolves: Number(summary?.completed_solves || 0),
             bestTimeMs,
             bestTimeSeconds: toSeconds(bestTimeMs),
+            bestTime: toSeconds(bestTimeMs),
             averageTimeMs,
             averageTimeSeconds: toSeconds(averageTimeMs),
+            averageTime: toSeconds(averageTimeMs),
             ao5Ms,
             ao5Seconds: toSeconds(ao5Ms),
+            ao5: toSeconds(ao5Ms),
             ao12Ms,
             ao12Seconds: toSeconds(ao12Ms),
+            ao12: toSeconds(ao12Ms),
             latestSolve: toPublicSolve(recentSolves[0] || null),
             recentSolves: recentSolves.slice(0, 12).map(toPublicSolve)
         };
