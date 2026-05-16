@@ -3,7 +3,6 @@ const { getDatabasePool, getDatabaseState } = require("../config/database");
 const { createPendingRepository } = require("./base.repository");
 const authRepository = require("./auth.repository");
 const ApiError = require("../utils/ApiError");
-const { addAssignment } = require("../utils/sqlAssignments");
 const { USER_TABLE, buildUserSelectColumns, mapUserRow } = require("../models/user.model");
 
 const REMINDER_LOG_TABLE = "reminder_logs";
@@ -233,53 +232,6 @@ const findUserById = async (userId) => {
     return mapUserRow(rows[0]);
 };
 
-const updateUser = async (userId, updates = {}) => {
-    await ensureSchema();
-
-    const pool = getPool();
-    const assignments = [];
-    const params = [];
-
-    addAssignment(assignments, params, "username", updates.username);
-    addAssignment(assignments, params, "email", updates.email);
-    addAssignment(assignments, params, "role", updates.role);
-
-    if (assignments.length === 0) {
-        return findUserById(userId);
-    }
-
-    params.push(userId);
-
-    try {
-        const [result] = await pool.execute(
-            `UPDATE ${USER_TABLE}
-             SET ${assignments.join(", ")}
-             WHERE id = ?`,
-            params
-        );
-
-        if (result.affectedRows === 0) {
-            return null;
-        }
-
-        return findUserById(userId);
-    } catch (error) {
-        if (error.code === "ER_DUP_ENTRY") {
-            if (error.message.includes("uq_users_username") || error.message.includes("username")) {
-                throw new ApiError(409, "Username is already taken.");
-            }
-
-            if (error.message.includes("uq_users_email") || error.message.includes("email")) {
-                throw new ApiError(409, "Email is already registered.");
-            }
-
-            throw new ApiError(409, "User already exists.");
-        }
-
-        throw error;
-    }
-};
-
 const getUserOverviewCounts = async (inactiveThresholdDays) => {
     await ensureSchema();
 
@@ -368,6 +320,5 @@ module.exports = {
     findReminderTargetByUserId,
     getMeta,
     getUserOverviewCounts,
-    listUsers,
-    updateUser
+    listUsers
 };

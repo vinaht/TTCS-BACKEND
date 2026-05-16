@@ -14,32 +14,10 @@ const {
     requirePositiveInteger
 } = require("../utils/validators");
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-const ALLOWED_ROLES = new Set(["user", "admin"]);
 
 const normalizeId = (value, fieldName = "User id") => requirePositiveInteger(value, fieldName);
-
-const normalizeEmail = (value) => {
-    const normalizedValue = normalizeRequiredText(value, "Email", 191).toLowerCase();
-
-    if (!EMAIL_REGEX.test(normalizedValue)) {
-        throw new ApiError(400, "Email format is invalid.");
-    }
-
-    return normalizedValue;
-};
-
-const normalizeRole = (value) => {
-    const normalizedValue = normalizeRequiredText(value, "Role", 20).toLowerCase();
-
-    if (!ALLOWED_ROLES.has(normalizedValue)) {
-        throw new ApiError(400, "Role must be either user or admin.");
-    }
-
-    return normalizedValue;
-};
 
 const isValidDate = (value) => {
     if (!value) {
@@ -176,35 +154,6 @@ class AdminService {
 
     async getUserById(userId) {
         const user = await this.repository.findUserById(normalizeId(userId));
-
-        if (!user) {
-            throw new ApiError(404, "User not found.");
-        }
-
-        return toReminderAwarePublicUser(user);
-    }
-
-    async updateUser(userId, payload = {}) {
-        const normalizedUserId = normalizeId(userId);
-        const updates = {};
-
-        if (payload.username !== undefined) {
-            updates.username = normalizeRequiredText(payload.username, "Username", 50);
-        }
-
-        if (payload.email !== undefined) {
-            updates.email = normalizeEmail(payload.email);
-        }
-
-        if (payload.role !== undefined) {
-            updates.role = normalizeRole(payload.role);
-        }
-
-        if (Object.keys(updates).length === 0) {
-            throw new ApiError(400, "At least one user field must be provided.");
-        }
-
-        const user = await this.repository.updateUser(normalizedUserId, updates);
 
         if (!user) {
             throw new ApiError(404, "User not found.");

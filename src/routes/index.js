@@ -1,6 +1,4 @@
 const express = require("express");
-
-const healthController = require("../controllers/health.controller");
 const authRoutes = require("./auth.routes");
 const algorithmRoutes = require("./algorithm.routes");
 const solveRoutes = require("./solve.routes");
@@ -10,7 +8,6 @@ const userFormulaRoutes = require("./userFormula.routes");
 
 const router = express.Router();
 
-router.get("/health", healthController.getHealth);
 router.use("/auth", authRoutes);
 router.use("/algorithms", algorithmRoutes);
 router.use("/solves", solveRoutes);
